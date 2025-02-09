@@ -36,11 +36,21 @@ import logging
 from pathlib import Path
 
 from prompt_toolkit import PromptSession
+from prompt_toolkit.completion import PathCompleter
+from prompt_toolkit.completion import WordCompleter
 from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
 from prompt_toolkit.history import FileHistory, InMemoryHistory
-from prompt_toolkit.completion import WordCompleter
+from prompt_toolkit.completion import Completer, Completion
 
 from typing import *
+
+class _MergedCompleter(Completer):
+    def __init__(self, *completers):
+        self.completers = completers
+
+    def get_completions(self, document, complete_event):
+        for completer in self.completers:
+            yield from completer.get_completions(document, complete_event)
 
 class CmdCli():
     """
@@ -68,6 +78,7 @@ class CmdCli():
         /,
         intro: str | None = None,
         useMultiLine: bool= False,
+        usePathCompleter: bool = False,
         useSuggestions: bool | None = True,
         useHistory: bool | None = True,
         logger: logging.Logger | None = None,
@@ -80,6 +91,8 @@ class CmdCli():
             欢迎信息
         :param useMultiLine: bool :False
             是否启用多行输入
+        :param usePathCompleter: bool :False
+            是否启用路径补全
         :param useSuggestions: bool | None :True
             是否启用自动建议
         :param useHistory: bool | None :True
@@ -128,8 +141,6 @@ class CmdCli():
             if not isinstance(logger, logging.Logger):
                 self.logger.debug("Logger is not a instance of logging.Logger, use user logger.")
 
-
-
         self.intro = intro
         self.commandHistoryPath = commandHistoryPath
         if not self.commandHistoryPath and debugMode:
@@ -143,14 +154,21 @@ class CmdCli():
         self.completionCommand: list[str] = []
         self.commandCompleter = WordCompleter(self.completionCommand, ignore_case=True)
 
+        self.usePathCompleter = usePathCompleter
+
         self.session = PromptSession(
             multiline=useMultiLine,
-            completer=self.commandCompleter,
+            completer=(
+                self.commandCompleter
+                if not self.usePathCompleter
+                else _MergedCompleter(self.commandCompleter, PathCompleter())
+            ),
             auto_suggest=AutoSuggestFromHistory() if useSuggestions else None,
-            history=\
-                FileHistory(self.commandHistoryPath) \
-                if useHistory and self.commandHistoryPath \
-                else InMemoryHistory(),
+            history=(
+                FileHistory(self.commandHistoryPath)
+                if useHistory and self.commandHistoryPath
+                else InMemoryHistory()
+            ),
         )
 
     def preloop(self) -> None:
@@ -212,6 +230,7 @@ class CmdCli():
             try:
                 rawInput = self.session.prompt(self.updatePrompt(self.lastCommandExitCode))
             except KeyboardInterrupt:
+                print()
                 continue
             except EOFError:
                 break
@@ -273,10 +292,3 @@ class CmdCli():
         """
         self.commandList.pop(commandName)
         self.completionCommand.remove(commandName)
-
-    def updateCommand(self) -> None:
-        """
-        :brief  更新命令
-        """
-        self.commandCompleter = WordCompleter(self.completionCommand, ignore_case=True)
-        self.session.completer = self.commandCompleter

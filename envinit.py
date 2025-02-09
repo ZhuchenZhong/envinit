@@ -81,6 +81,7 @@ if not (core.init()):
 
 cli = core.cli.EnvMgrCmdCli(
     intro = __cmdcliIntro,
+    usePathCompleter=True,
     logger = logger,
     debugMode = True,
 )
