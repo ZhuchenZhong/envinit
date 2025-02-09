@@ -47,20 +47,20 @@ class CmdCli():
     :brief  交互式命令行类
 
     :details    主循环流程
-        preloop()                                                       # 循环初始化
-        print(self.intro)                                               # 打印欢迎信息
+        preloop()                                                                   # 循环初始化
+        print(self.intro)                                                           # 打印欢迎信息
         while True:
             try:
-                rawInput = self.session.prompt(updatePrompt(endCode))   # 获取用户输入
+                rawInput = self.session.prompt(updatePrompt(lastCommandExitCode))   # 获取用户输入
             except KeyboardInterrupt:
                 continue
             except EOFError:
                 break
-            command, args = preCommand(rawInput)                        # 处理原始输入行
-            lastCommand = command                                       # 记录上一次命令
-            endCode = executeCommand(command, args)                     # 执行命令
-            postCommand(endCode, command, args)                         # 执行命令后处理
-        postloop()                                                      # 循环结束后处理
+            command, args = preCommand(rawInput)                                    # 处理原始输入行
+            lastCommand = command                                                   # 记录上一次命令
+            lastCommandExitCode = executeCommand(command, args)                     # 执行命令
+            postCommand(lastCommandExitCode, command, args)                         # 执行命令后处理
+        postloop()                                                                  # 循环结束后处理
     """
 
     def __init__(
@@ -102,11 +102,10 @@ class CmdCli():
                 sys.exit(1)
         self.forceNoExit = forceNoExit
 
-        if debugMode and logger:
-            self.logger = logger
-        elif debugMode and not logger:
+        self.debugMode = debugMode
+        if not logger:
             try:
-                from rich.logging import RichHandler
+                RichHandler = __import__("rich.logging.RichHandler")
 
                 logging.basicConfig(
                     level = "NOTSET",
@@ -122,14 +121,19 @@ class CmdCli():
                 )
 
             self.logger = logging.getLogger("CmdCli")
+            self.logger.debug("Logger is not set, use default logger.")
+            self.logger.debug(f"use {self.logger.handlers} as handler.")
+        else:
+            self.logger = logger
+            if not isinstance(logger, logging.Logger):
+                self.logger.debug("Logger is not a instance of logging.Logger, use user logger.")
 
-        self.debugMode = debugMode
+
 
         self.intro = intro
-        self.debugMode = debugMode
         self.commandHistoryPath = commandHistoryPath
         if not self.commandHistoryPath and debugMode:
-            self.logger.warning('Command history file not found.')
+            self.logger.warning('Command history file not found.')         
 
         # 命令列表
         self.commandList: dict[str, Callable] = {}
@@ -166,7 +170,7 @@ class CmdCli():
         :brief  处理原始输入行
         """
         rawInput = rawInput.strip().split()
-        cmd, args = rawInput[0], rawInput[1:]
+        cmd, args = rawInput[0], rawInput[1:] or ''
 
         return cmd, ' '.join(args)
 
@@ -174,7 +178,7 @@ class CmdCli():
         """
         :brief  执行命令
 
-        :return int:    命令执行结果
+        :return int:    命令执行结果(in most cases)
             -1    : 未找到命令
             0     : 正常执行
             others: 错误
@@ -198,7 +202,7 @@ class CmdCli():
         """
         :brief  主循环
         """
-        endCode: int = 0
+        self.lastCommandExitCode: int = 0
         self.lastCommand: str = ''
 
         self.preloop()
@@ -206,7 +210,7 @@ class CmdCli():
 
         while True:
             try:
-                rawInput = self.session.prompt(self.updatePrompt(endCode))
+                rawInput = self.session.prompt(self.updatePrompt(self.lastCommandExitCode))
             except KeyboardInterrupt:
                 continue
             except EOFError:
@@ -217,14 +221,14 @@ class CmdCli():
 
             if self.forceNoExit:
                 with self.fuckit:
-                    endCode = self.executeCommand(command, args)
+                    self.lastCommandExitCode = self.executeCommand(command, args)
             else:
                 try:
-                    endCode = self.executeCommand(command, args)
+                    self.lastCommandExitCode = self.executeCommand(command, args)
                 except Exception as e:
-                    self.errCommand(command, rawInput, e)
+                    self.errCommand(command, args, e)
 
-            self.postCommand(endCode, command, args)
+            self.postCommand(self.lastCommandExitCode, command, args)
 
         self.postloop()
 
@@ -254,7 +258,7 @@ class CmdCli():
         """
         self.commandList[commandName] = commandFunc
         self.completionCommand.append(commandName)
-    
+
     def addCommands(self, commandDict: dict[str, Callable]) -> None:
         """
         :brief  添加多个命令

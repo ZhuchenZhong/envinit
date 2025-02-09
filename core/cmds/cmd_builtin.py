@@ -2,7 +2,7 @@
     :brief
         内建命令 / 基础命令
 '''
-
+from os import system
 from sys import exit
 
 from .utils import forceRun
@@ -18,5 +18,11 @@ def do_exit(line: str):
         exit(int(line))
     except:
         exit(0)
+
+def do_clear(line: str):
+    '''
+    :brief  清屏
+    '''
+    system("cls")
 
 
