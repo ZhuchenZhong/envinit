@@ -36,31 +36,41 @@ import logging
 from pathlib import Path
 
 from prompt_toolkit import PromptSession
+from prompt_toolkit.completion import PathCompleter
+from prompt_toolkit.completion import WordCompleter
 from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
 from prompt_toolkit.history import FileHistory, InMemoryHistory
-from prompt_toolkit.completion import WordCompleter
+from prompt_toolkit.completion import Completer, Completion
 
 from typing import *
+
+class _MergedCompleter(Completer):
+    def __init__(self, *completers):
+        self.completers = completers
+
+    def get_completions(self, document, complete_event):
+        for completer in self.completers:
+            yield from completer.get_completions(document, complete_event)
 
 class CmdCli():
     """
     :brief  交互式命令行类
 
     :details    主循环流程
-        preloop()                                                       # 循环初始化
-        print(self.intro)                                               # 打印欢迎信息
+        preloop()                                                                   # 循环初始化
+        print(self.intro)                                                           # 打印欢迎信息
         while True:
             try:
-                rawInput = self.session.prompt(updatePrompt(endCode))   # 获取用户输入
+                rawInput = self.session.prompt(updatePrompt(lastCommandExitCode))   # 获取用户输入
             except KeyboardInterrupt:
                 continue
             except EOFError:
                 break
-            command, args = preCommand(rawInput)                        # 处理原始输入行
-            lastCommand = command                                       # 记录上一次命令
-            endCode = executeCommand(command, args)                     # 执行命令
-            postCommand(endCode, command, args)                         # 执行命令后处理
-        postloop()                                                      # 循环结束后处理
+            command, args = preCommand(rawInput)                                    # 处理原始输入行
+            lastCommand = command                                                   # 记录上一次命令
+            lastCommandExitCode = executeCommand(command, args)                     # 执行命令
+            postCommand(lastCommandExitCode, command, args)                         # 执行命令后处理
+        postloop()                                                                  # 循环结束后处理
     """
 
     def __init__(
@@ -68,6 +78,7 @@ class CmdCli():
         /,
         intro: str | None = None,
         useMultiLine: bool= False,
+        usePathCompleter: bool = False,
         useSuggestions: bool | None = True,
         useHistory: bool | None = True,
         logger: logging.Logger | None = None,
@@ -80,6 +91,8 @@ class CmdCli():
             欢迎信息
         :param useMultiLine: bool :False
             是否启用多行输入
+        :param usePathCompleter: bool :False
+            是否启用路径补全
         :param useSuggestions: bool | None :True
             是否启用自动建议
         :param useHistory: bool | None :True
@@ -102,11 +115,10 @@ class CmdCli():
                 sys.exit(1)
         self.forceNoExit = forceNoExit
 
-        if debugMode and logger:
-            self.logger = logger
-        elif debugMode and not logger:
+        self.debugMode = debugMode
+        if not logger:
             try:
-                from rich.logging import RichHandler
+                RichHandler = __import__("rich.logging.RichHandler")
 
                 logging.basicConfig(
                     level = "NOTSET",
@@ -122,14 +134,17 @@ class CmdCli():
                 )
 
             self.logger = logging.getLogger("CmdCli")
-
-        self.debugMode = debugMode
+            self.logger.debug("Logger is not set, use default logger.")
+            self.logger.debug(f"use {self.logger.handlers} as handler.")
+        else:
+            self.logger = logger
+            if not isinstance(logger, logging.Logger):
+                self.logger.debug("Logger is not a instance of logging.Logger, use user logger.")
 
         self.intro = intro
-        self.debugMode = debugMode
         self.commandHistoryPath = commandHistoryPath
         if not self.commandHistoryPath and debugMode:
-            self.logger.warning('Command history file not found.')
+            self.logger.warning('Command history file not found.')         
 
         # 命令列表
         self.commandList: dict[str, Callable] = {}
@@ -139,14 +154,21 @@ class CmdCli():
         self.completionCommand: list[str] = []
         self.commandCompleter = WordCompleter(self.completionCommand, ignore_case=True)
 
+        self.usePathCompleter = usePathCompleter
+
         self.session = PromptSession(
             multiline=useMultiLine,
-            completer=self.commandCompleter,
+            completer=(
+                self.commandCompleter
+                if not self.usePathCompleter
+                else _MergedCompleter(self.commandCompleter, PathCompleter())
+            ),
             auto_suggest=AutoSuggestFromHistory() if useSuggestions else None,
-            history=\
-                FileHistory(self.commandHistoryPath) \
-                if useHistory and self.commandHistoryPath \
-                else InMemoryHistory(),
+            history=(
+                FileHistory(self.commandHistoryPath)
+                if useHistory and self.commandHistoryPath
+                else InMemoryHistory()
+            ),
         )
 
     def preloop(self) -> None:
@@ -166,7 +188,7 @@ class CmdCli():
         :brief  处理原始输入行
         """
         rawInput = rawInput.strip().split()
-        cmd, args = rawInput[0], rawInput[1:]
+        cmd, args = rawInput[0], rawInput[1:] or ''
 
         return cmd, ' '.join(args)
 
@@ -174,7 +196,7 @@ class CmdCli():
         """
         :brief  执行命令
 
-        :return int:    命令执行结果
+        :return int:    命令执行结果(in most cases)
             -1    : 未找到命令
             0     : 正常执行
             others: 错误
@@ -198,7 +220,7 @@ class CmdCli():
         """
         :brief  主循环
         """
-        endCode: int = 0
+        self.lastCommandExitCode: int = 0
         self.lastCommand: str = ''
 
         self.preloop()
@@ -206,8 +228,9 @@ class CmdCli():
 
         while True:
             try:
-                rawInput = self.session.prompt(self.updatePrompt(endCode))
+                rawInput = self.session.prompt(self.updatePrompt(self.lastCommandExitCode))
             except KeyboardInterrupt:
+                print()
                 continue
             except EOFError:
                 break
@@ -217,14 +240,14 @@ class CmdCli():
 
             if self.forceNoExit:
                 with self.fuckit:
-                    endCode = self.executeCommand(command, args)
+                    self.lastCommandExitCode = self.executeCommand(command, args)
             else:
                 try:
-                    endCode = self.executeCommand(command, args)
+                    self.lastCommandExitCode = self.executeCommand(command, args)
                 except Exception as e:
-                    self.errCommand(command, rawInput, e)
+                    self.errCommand(command, args, e)
 
-            self.postCommand(endCode, command, args)
+            self.postCommand(self.lastCommandExitCode, command, args)
 
         self.postloop()
 
@@ -254,7 +277,7 @@ class CmdCli():
         """
         self.commandList[commandName] = commandFunc
         self.completionCommand.append(commandName)
-    
+
     def addCommands(self, commandDict: dict[str, Callable]) -> None:
         """
         :brief  添加多个命令
@@ -269,10 +292,3 @@ class CmdCli():
         """
         self.commandList.pop(commandName)
         self.completionCommand.remove(commandName)
-
-    def updateCommand(self) -> None:
-        """
-        :brief  更新命令
-        """
-        self.commandCompleter = WordCompleter(self.completionCommand, ignore_case=True)
-        self.session.completer = self.commandCompleter

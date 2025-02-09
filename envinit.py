@@ -81,11 +81,17 @@ if not (core.init()):
 
 cli = core.cli.EnvMgrCmdCli(
     intro = __cmdcliIntro,
-    logger = logger
+    usePathCompleter=True,
+    logger = logger,
+    debugMode = True,
 )
 
 logger.debug(f"Cli Cmd Loaded {core.cmds.commands}")
 cli.addCommands(core.cmds.commands)
+
+## 添加内建命令(需要在主程序中添加的)
+# version       显示版本信息
+cli.addCommand("version", lambda line: print(__cmdcliIntro))
 
 try:
     cli.cmdloop()
