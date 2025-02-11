@@ -31,6 +31,7 @@
     :description
         对Windows下开发/运行环境进行管理
 """
+
 __version__ = "0.0.1"
 __author__ = "k1d(钟助辰)"
 
@@ -38,6 +39,7 @@ __author__ = "k1d(钟助辰)"
 
 import asyncio
 import logging
+from pathlib import Path
 
 import colorama
 
@@ -55,10 +57,7 @@ asyncio.get_event_loop().set_debug(False)
 logging.getLogger("asyncio").setLevel(logging.INFO)
 
 logging.basicConfig(
-    level = "NOTSET",
-    format = "%(message)s",
-    datefmt = "[%X]",
-    handlers = [RichHandler()]
+    level="NOTSET", format="%(message)s", datefmt="[%X]", handlers=[RichHandler()]
 )
 logger = logging.getLogger("envinit")
 logger.setLevel(logging.DEBUG)
@@ -80,10 +79,10 @@ if not (core.init()):
     pass
 
 cli = core.cli.EnvMgrCmdCli(
-    intro = __cmdcliIntro,
+    intro=__cmdcliIntro,
     usePathCompleter=True,
-    logger = logger,
-    debugMode = True,
+    logger=logger,
+    debugMode=True,
 )
 
 logger.debug(f"Cli Cmd Loaded {core.cmds.commands}")
@@ -92,6 +91,11 @@ cli.addCommands(core.cmds.commands)
 ## 添加内建命令(需要在主程序中添加的)
 # version       显示版本信息
 cli.addCommand("version", lambda line: print(__cmdcliIntro))
+# copyright     显示版权信息
+cli.addCommand(
+    "copyright",
+    lambda line: print(core.utils.get_fileContent(Path(__file__).parent / "LICENSE")),
+)
 
 try:
     cli.cmdloop()
