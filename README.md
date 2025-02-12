@@ -1,4 +1,3 @@
-
 # envinit
 
 `envinit` 是一个用于管理 Windows 开发/运行环境的工具，基于 `prompt_toolkit` 实现了一个交互式命令行界面。该工具提供了一系列内建命令，并支持用户自定义命令。
@@ -18,3 +17,10 @@
    ```sh
    $ pdm install
    ```
+
+
+## Develop Part
+
+##### BREAKING CHANGES
+
+重构代码，把cmdcli作为单独模块处理
