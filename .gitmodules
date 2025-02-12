@@ -1,0 +1,3 @@
+[submodule "CmdCli"]
+	path = CmdCli
+	url = https://github.com/ZhuchenZhong/CmdCli.git
