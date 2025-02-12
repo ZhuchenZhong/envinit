@@ -1,4 +1,4 @@
-from . import cmdcli
+from ..idea import cmdcli
 from . import cli
 from . import user
 from .utils import *

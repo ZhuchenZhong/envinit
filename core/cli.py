@@ -3,7 +3,7 @@ import time
 
 import colorama
 
-from .cmdcli import CmdCli
+from ..idea.cmdcli import CmdCli
 
 from typing import *
 

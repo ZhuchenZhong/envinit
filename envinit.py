@@ -82,7 +82,6 @@ cli = core.cli.EnvMgrCmdCli(
     intro=__cmdcliIntro,
     usePathCompleter=True,
     logger=logger,
-    debugMode=True,
 )
 
 logger.debug(f"Cli Cmd Loaded {core.cmds.commands}")
